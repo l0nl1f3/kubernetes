@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -277,6 +278,17 @@ func (g *genericScheduler) findNodesThatPassFilters(
 	feasibleNodes := make([]*v1.Node, numNodesToFind)
 
 	if !fwk.HasFilterPlugins() {
+		statsQueryAddr := "http://10.244.1.43:9091/stats/"
+		// send a http query to the stats server
+		// query string is the pod namespace
+		klog.V(3).Infof("Sending http query to stats server: ", statsQueryAddr+pod.Namespace)
+		resp, err := http.Get(statsQueryAddr + pod.Namespace)
+		if err != nil {
+			klog.Infof("Error in sending http query to stats server")
+		} else {
+			// log the response from the stats server
+			klog.Infof("Response from stats server: ", resp)
+		}
 		length := len(nodes)
 		for i := range feasibleNodes {
 			feasibleNodes[i] = nodes[(g.nextStartNodeIndex+i)%length].Node()

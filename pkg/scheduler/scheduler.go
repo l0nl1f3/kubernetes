@@ -430,6 +430,9 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 	}
 	pod := podInfo.Pod
 	fwk, err := sched.frameworkForPod(pod)
+
+	// debug fwk
+	klog.V(3).InfoS("fwk", "fwk", fwk)
 	if err != nil {
 		// This shouldn't happen, because we only accept for scheduling the pods
 		// which specify a scheduler name that matches one of the profiles.

@@ -406,11 +406,48 @@ func nextGeneration() int64 {
 	return atomic.AddInt64(&generation, 1)
 }
 
+type servicePair struct {
+	arrivalRate float64
+	serviceRate float64
+}
+
+type serviceCoexistInfo struct {
+	servicePairVec []servicePair
+}
+
+func (sci *serviceCoexistInfo) Add(sp servicePair) {
+	sci.servicePairVec = append(sci.servicePairVec, sp)
+}
+
+func (sci *serviceCoexistInfo) CoexistCoefficient() float64 {
+	sumArrivalRate := 0.0
+	sumCoefficient := 0.0
+	for _, sp := range sci.servicePairVec {
+		sumArrivalRate += sp.arrivalRate
+	}
+	for _, sp := range sci.servicePairVec {
+		sumCoefficient += sp.arrivalRate / sumArrivalRate * sp.serviceRate / (sp.serviceRate + sumArrivalRate)
+	}
+	return sumCoefficient
+}
+func (sci *serviceCoexistInfo) CoexistAvailability(rsci *serviceCoexistInfo) bool {
+	sciAddSP := *sci
+	for _, sp := range rsci.servicePairVec {
+		sciAddSP.Add(sp)
+	}
+	if sciAddSP.CoexistCoefficient() > 0.90 {
+		return false
+	} else {
+		return true
+	}
+}
+
 // Resource is a collection of compute resource.
 type Resource struct {
-	MilliCPU         int64
-	Memory           int64
-	EphemeralStorage int64
+	MilliCPU           int64
+	Memory             int64
+	ServiceCoexistInfo *serviceCoexistInfo
+	EphemeralStorage   int64
 	// We store allowedPodNumber (which is Node.Status.Allocatable.Pods().Value())
 	// explicitly as int, to avoid conversions and improve performance.
 	AllowedPodNumber int
@@ -431,12 +468,18 @@ func (r *Resource) Add(rl v1.ResourceList) {
 		return
 	}
 
+	arrivalRate := -1.0
+	serviceRate := -1.0
 	for rName, rQuant := range rl {
 		switch rName {
 		case v1.ResourceCPU:
 			r.MilliCPU += rQuant.MilliValue()
 		case v1.ResourceMemory:
 			r.Memory += rQuant.Value()
+		case v1.ResourceArrivalRate:
+			arrivalRate = rQuant.AsApproximateFloat64()
+		case v1.ResourceServiceRate:
+			serviceRate = rQuant.AsApproximateFloat64()
 		case v1.ResourcePods:
 			r.AllowedPodNumber += int(rQuant.Value())
 		case v1.ResourceEphemeralStorage:
@@ -450,15 +493,24 @@ func (r *Resource) Add(rl v1.ResourceList) {
 			}
 		}
 	}
+	if arrivalRate >= 0 && serviceRate >= 0 {
+		r.ServiceCoexistInfo.Add(
+			servicePair{
+				arrivalRate: arrivalRate,
+				serviceRate: serviceRate,
+			},
+		)
+	}
 }
 
 // Clone returns a copy of this resource.
 func (r *Resource) Clone() *Resource {
 	res := &Resource{
-		MilliCPU:         r.MilliCPU,
-		Memory:           r.Memory,
-		AllowedPodNumber: r.AllowedPodNumber,
-		EphemeralStorage: r.EphemeralStorage,
+		MilliCPU:           r.MilliCPU,
+		Memory:             r.Memory,
+		AllowedPodNumber:   r.AllowedPodNumber,
+		ServiceCoexistInfo: r.ServiceCoexistInfo,
+		EphemeralStorage:   r.EphemeralStorage,
 	}
 	if r.ScalarResources != nil {
 		res.ScalarResources = make(map[v1.ResourceName]int64)
