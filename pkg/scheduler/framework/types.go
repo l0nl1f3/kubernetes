@@ -419,6 +419,24 @@ func (sci *serviceCoexistInfo) Add(sp servicePair) {
 	sci.servicePairVec = append(sci.servicePairVec, sp)
 }
 
+func (sci *serviceCoexistInfo) Extend(rsci *serviceCoexistInfo) {
+	sci.servicePairVec = append(sci.servicePairVec, rsci.servicePairVec...)
+}
+
+func (sci *serviceCoexistInfo) RemovePair(sp servicePair) {
+	for i, spv := range sci.servicePairVec {
+		if spv == sp {
+			sci.servicePairVec = append(sci.servicePairVec[:i], sci.servicePairVec[i+1:]...)
+		}
+	}
+}
+
+func (sci *serviceCoexistInfo) Remove(rsci *serviceCoexistInfo) {
+	for _, sp := range rsci.servicePairVec {
+		sci.RemovePair(sp)
+	}
+}
+
 func (sci *serviceCoexistInfo) CoexistCoefficient() float64 {
 	sumArrivalRate := 0.0
 	sumCoefficient := 0.0
@@ -637,6 +655,8 @@ func (n *NodeInfo) AddPodInfo(podInfo *PodInfo) {
 	n.Requested.MilliCPU += res.MilliCPU
 	n.Requested.Memory += res.Memory
 	n.Requested.EphemeralStorage += res.EphemeralStorage
+	n.Requested.ServiceCoexistInfo.Extend(res.ServiceCoexistInfo)
+
 	if n.Requested.ScalarResources == nil && len(res.ScalarResources) > 0 {
 		n.Requested.ScalarResources = map[v1.ResourceName]int64{}
 	}
@@ -722,6 +742,7 @@ func (n *NodeInfo) RemovePod(pod *v1.Pod) error {
 			n.Requested.MilliCPU -= res.MilliCPU
 			n.Requested.Memory -= res.Memory
 			n.Requested.EphemeralStorage -= res.EphemeralStorage
+			n.Requested.ServiceCoexistInfo.Remove(res.ServiceCoexistInfo)
 			if len(res.ScalarResources) > 0 && n.Requested.ScalarResources == nil {
 				n.Requested.ScalarResources = map[v1.ResourceName]int64{}
 			}
